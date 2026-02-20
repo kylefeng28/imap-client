@@ -13,6 +13,7 @@ repository = "https://github.com/pimalaya/imap-client/"
 
 [features]
 default = []
+condstore = ["imap-next/ext_condstore_qresync"]
 
 [dev-dependencies]
 async-std = { version = "1.13", features = ["attributes"] }

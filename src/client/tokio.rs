@@ -12,7 +12,7 @@ use std::{
 use imap_next::{
     client::{Error as NextError, Event, Options as ClientOptions},
     imap_types::{
-        command::{Command, CommandBody},
+        command::{Command, CommandBody, FetchModifier},
         core::{AString, IString, Literal, LiteralMode, NString, QuotedChar, Tag, Vec1},
         error::ValidationError,
         extensions::{
@@ -352,6 +352,22 @@ impl Client {
         Ok(self.resolve(EnableTask::new(capabilities)).await??)
     }
 
+    /// Enables the CONDSTORE extension if supported by the server.
+    #[cfg(feature = "condstore")]
+    pub async fn enable_condstore_if_supported(&mut self) -> Result<bool, ClientError> {
+        if !self.state.ext_condstore_supported() || !self.state.ext_enable_supported() {
+            return Ok(false);
+        }
+
+        let enable = self.enable(vec![CapabilityEnable::CondStore]);
+
+        let enabled = (enable.await?)
+            .map(|capabilities| capabilities.contains(&CapabilityEnable::CondStore))
+            .unwrap_or(false);
+        self.state.condstore_enabled = enabled;
+        Ok(enabled)
+    }
+
     /// Creates a new mailbox.
     pub async fn create(
         &mut self,
@@ -385,7 +401,10 @@ impl Client {
         mailbox: impl TryInto<Mailbox<'_>, Error = ValidationError>,
     ) -> Result<SelectDataUnvalidated, ClientError> {
         let mbox = mailbox.try_into()?.into_static();
-        Ok(self.resolve(SelectTask::new(mbox)).await??)
+        let task = SelectTask::new(mbox);
+        #[cfg(feature = "condstore")]
+        let task = task.with_condstore(self.state.condstore_enabled());
+        Ok(self.resolve(task).await??)
     }
 
     /// Selects the given mailbox in read-only mode.
@@ -394,7 +413,10 @@ impl Client {
         mailbox: impl TryInto<Mailbox<'_>, Error = ValidationError>,
     ) -> Result<SelectDataUnvalidated, ClientError> {
         let mbox = mailbox.try_into()?.into_static();
-        Ok(self.resolve(SelectTask::read_only(mbox)).await??)
+        let task = SelectTask::read_only(mbox);
+        #[cfg(feature = "condstore")]
+        let task = task.with_condstore(self.state.condstore_enabled());
+        Ok(self.resolve(task).await??)
     }
 
     /// Expunges the selected mailbox.
@@ -887,6 +909,7 @@ impl Client {
         sequence_set: SequenceSet,
         items: MacroOrMessageDataItemNames<'_>,
         uid: bool,
+        modifiers: Option<Vec<FetchModifier>>,
     ) -> Result<HashMap<NonZeroU32, Vec1<MessageDataItem<'static>>>, ClientError> {
         let mut items = match items {
             MacroOrMessageDataItemNames::Macro(m) => m.expand().into_static(),
@@ -897,9 +920,10 @@ impl Client {
             items.push(MessageDataItemName::Uid);
         }
 
-        let seq_map = self
-            .resolve(FetchTask::new(sequence_set, items.into()).with_uid(uid))
-            .await??;
+        let mut task = FetchTask::new(sequence_set, items.into()).with_uid(uid);
+        modifiers.map(|m| task.set_modifiers(m));
+
+        let seq_map = self.resolve(task).await??;
 
         if uid {
             let mut uid_map = HashMap::new();
@@ -934,7 +958,17 @@ impl Client {
         sequence_set: SequenceSet,
         items: MacroOrMessageDataItemNames<'_>,
     ) -> Result<HashMap<NonZeroU32, Vec1<MessageDataItem<'static>>>, ClientError> {
-        self._fetch(sequence_set, items, false).await
+        self._fetch(sequence_set, items, false, None).await
+    }
+
+    pub async fn fetch_with_modifiers(
+        &mut self,
+        sequence_set: SequenceSet,
+        items: MacroOrMessageDataItemNames<'_>,
+        modifiers: Vec<FetchModifier>,
+    ) -> Result<HashMap<NonZeroU32, Vec1<MessageDataItem<'static>>>, ClientError> {
+        self._fetch(sequence_set, items, false, Some(modifiers))
+            .await
     }
 
     pub async fn uid_fetch(
@@ -942,7 +976,17 @@ impl Client {
         sequence_set: SequenceSet,
         items: MacroOrMessageDataItemNames<'_>,
     ) -> Result<HashMap<NonZeroU32, Vec1<MessageDataItem<'static>>>, ClientError> {
-        self._fetch(sequence_set, items, true).await
+        self._fetch(sequence_set, items, true, None).await
+    }
+
+    pub async fn uid_fetch_with_modifiers(
+        &mut self,
+        sequence_set: SequenceSet,
+        items: MacroOrMessageDataItemNames<'_>,
+        modifiers: Vec<FetchModifier>,
+    ) -> Result<HashMap<NonZeroU32, Vec1<MessageDataItem<'static>>>, ClientError> {
+        self._fetch(sequence_set, items, true, Some(modifiers))
+            .await
     }
 
     async fn _sort_or_fallback(
@@ -973,7 +1017,7 @@ impl Client {
                 debug!(?ids, "fetching sort envelopes {}/{ids_chunks_len}", n + 1);
                 let ids = SequenceSet::try_from(ids.to_vec())?;
                 let items = fetch_items.clone();
-                fetches.extend(self._fetch(ids, items, uid).await?);
+                fetches.extend(self._fetch(ids, items, uid, None).await?);
             }
 
             let items = ids.into_iter().flat_map(|id| fetches.remove(&id)).collect();
@@ -1010,7 +1054,7 @@ impl Client {
                 debug!(?ids, "fetching search envelopes {}/{ids_chunks_len}", n + 1);
                 let ids = SequenceSet::try_from(ids.to_vec())?;
                 let items = fetch_items.clone();
-                fetches.extend(self._fetch(ids, items.into(), uid).await?);
+                fetches.extend(self._fetch(ids, items.into(), uid, None).await?);
             }
 
             let mut fetches: Vec<_> = fetches.into_values().collect();

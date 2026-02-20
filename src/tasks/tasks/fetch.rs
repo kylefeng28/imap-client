@@ -4,7 +4,7 @@ use std::{
 };
 
 use imap_next::imap_types::{
-    command::CommandBody,
+    command::{CommandBody, FetchModifier},
     core::Vec1,
     fetch::{MacroOrMessageDataItemNames, MessageDataItem},
     response::{Data, StatusBody, StatusKind},
@@ -22,6 +22,7 @@ pub struct FetchTask {
     sequence_set: SequenceSet,
     macro_or_item_names: MacroOrMessageDataItemNames<'static>,
     uid: bool,
+    modifiers: Vec<FetchModifier>,
     output: HashMap<NonZeroU32, HashSet<MessageDataItem<'static>>>,
 }
 
@@ -31,6 +32,7 @@ impl FetchTask {
             sequence_set,
             macro_or_item_names: items,
             uid: true,
+            modifiers: Default::default(),
             output: Default::default(),
         }
     }
@@ -43,6 +45,20 @@ impl FetchTask {
         self.set_uid(uid);
         self
     }
+
+    pub fn set_modifiers(&mut self, modifiers: Vec<FetchModifier>) {
+        self.modifiers = modifiers;
+    }
+
+    pub fn with_modifiers(mut self, modifiers: Vec<FetchModifier>) -> Self {
+        self.modifiers = modifiers;
+        self
+    }
+
+    pub fn with_changed_since(mut self, modseq: std::num::NonZeroU64) -> Self {
+        self.modifiers.push(FetchModifier::ChangedSince(modseq));
+        self
+    }
 }
 
 impl Task for FetchTask {
@@ -50,7 +66,7 @@ impl Task for FetchTask {
 
     fn command_body(&self) -> CommandBody<'static> {
         CommandBody::Fetch {
-            modifiers: Default::default(),
+            modifiers: self.modifiers.clone(),
             sequence_set: self.sequence_set.clone(),
             macro_or_item_names: self.macro_or_item_names.clone(),
             uid: self.uid,

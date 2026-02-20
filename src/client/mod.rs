@@ -14,6 +14,8 @@ pub struct Client {
     resolver: Resolver,
     capabilities: Vec1<Capability<'static>>,
     idle_timeout: Duration,
+    #[cfg(feature = "condstore")]
+    condstore_enabled: bool,
 }
 
 impl Client {
@@ -25,6 +27,8 @@ impl Client {
             resolver,
             capabilities: Vec1::from(Capability::Imap4Rev1),
             idle_timeout: Duration::from_secs(5 * 60), // 5 min
+            #[cfg(feature = "condstore")]
+            condstore_enabled: false,
         }
     }
 
@@ -161,5 +165,19 @@ impl Client {
     pub fn ext_move_supported(&self) -> bool {
         self.capabilities_iter()
             .any(|c| matches!(c, Capability::Move))
+    }
+
+    /// Returns `true` if the `CONDSTORE` extension is supported by the
+    /// server.
+    #[cfg(feature = "condstore")]
+    pub fn ext_condstore_supported(&self) -> bool {
+        self.capabilities_iter()
+            .any(|c| matches!(c, Capability::CondStore))
+    }
+
+    /// Returns `true` if the `CONDSTORE` extension is enabled.
+    #[cfg(feature = "condstore")]
+    pub fn condstore_enabled(&self) -> bool {
+        self.condstore_enabled
     }
 }
