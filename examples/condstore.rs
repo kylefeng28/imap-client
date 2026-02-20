@@ -1,4 +1,4 @@
-use imap_client::client::tokio::Client;
+use imap_client::{client::tokio::Client, tasks::tasks::fetch::FetchTask};
 use imap_next::imap_types::{
     command::FetchModifier,
     core::Vec1,
@@ -90,6 +90,29 @@ async fn main() {
                 .unwrap();
 
             println!("SEARCH MODSEQ found {} messages", search_results.len());
+
+            // Test UID FETCH VANISHED (requires QRESYNC)
+            if client.state.capabilities_iter().any(|c| matches!(c, imap_client::imap_types::response::Capability::QResync)) {
+                println!("\n--- Testing UID FETCH VANISHED (QRESYNC) ---");
+
+                let vanished_task = FetchTask::new(
+                    SequenceSet::try_from("1:*").unwrap(),
+                    MacroOrMessageDataItemNames::Macro(Macro::Fast),
+                )
+                .with_changed_since(test_modseq)
+                .with_vanished();
+
+                match client.resolve(vanished_task).await {
+                    Ok(Ok(messages)) => {
+                        println!("UID FETCH VANISHED found {} messages", messages.len());
+                        println!("Note: VANISHED responses show deleted UIDs");
+                    }
+                    Ok(Err(e)) => println!("UID FETCH VANISHED error: {:?}", e),
+                    Err(e) => println!("UID FETCH VANISHED error: {:?}", e),
+                }
+            } else {
+                println!("\n✗ QRESYNC not supported (UID FETCH VANISHED unavailable)");
+            }
         } else {
             println!("\nCONDSTORE is not active (no HIGHESTMODSEQ returned)");
         }
