@@ -6,8 +6,7 @@ use imap_client::{
     Client,
 };
 
-const USAGE: &str =
-    "USAGE: cargo run --example=fetch -- <host> <port> <username> <password>";
+const USAGE: &str = "USAGE: cargo run --example=fetch -- <host> <port> <username> <password>";
 
 #[tokio::main]
 async fn main() {

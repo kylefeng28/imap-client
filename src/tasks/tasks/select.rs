@@ -23,6 +23,9 @@ pub struct SelectDataUnvalidated {
     pub permanent_flags: Option<Vec<FlagPerm<'static>>>,
     pub uid_next: Option<NonZeroU32>,
     pub uid_validity: Option<NonZeroU32>,
+
+    // optional CONDSTORE response
+    pub highest_modseq: Option<std::num::NonZeroU64>,
 }
 
 impl SelectDataUnvalidated {
@@ -63,6 +66,7 @@ impl SelectDataUnvalidated {
 pub struct SelectTask {
     mailbox: Mailbox<'static>,
     read_only: bool,
+    condstore_enabled: bool,
     output: SelectDataUnvalidated,
 }
 
@@ -71,6 +75,7 @@ impl SelectTask {
         Self {
             mailbox,
             read_only: false,
+            condstore_enabled: false,
             output: Default::default(),
         }
     }
@@ -79,8 +84,14 @@ impl SelectTask {
         Self {
             mailbox,
             read_only: true,
+            condstore_enabled: false,
             output: Default::default(),
         }
+    }
+
+    pub fn with_condstore(mut self, enabled: bool) -> Self {
+        self.condstore_enabled = enabled;
+        self
     }
 }
 
@@ -90,15 +101,22 @@ impl Task for SelectTask {
     fn command_body(&self) -> CommandBody<'static> {
         let mailbox = self.mailbox.clone();
 
+        let parameters = if self.condstore_enabled {
+            use imap_next::imap_types::command::SelectParameter;
+            vec![SelectParameter::CondStore]
+        } else {
+            Default::default()
+        };
+
         if self.read_only {
             CommandBody::Examine {
                 mailbox,
-                parameters: Default::default(),
+                parameters,
             }
         } else {
             CommandBody::Select {
                 mailbox,
-                parameters: Default::default(),
+                parameters,
             }
         }
     }
@@ -141,6 +159,10 @@ impl Task for SelectTask {
                 }
                 Some(Code::UidValidity(uid)) => {
                     self.output.uid_validity = Some(uid);
+                    None
+                }
+                Some(Code::HighestModSeq(modseq)) => {
+                    self.output.highest_modseq = Some(modseq);
                     None
                 }
                 _ => Some(status_body),
