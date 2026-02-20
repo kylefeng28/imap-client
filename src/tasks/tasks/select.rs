@@ -25,7 +25,6 @@ pub struct SelectDataUnvalidated {
     pub uid_validity: Option<NonZeroU32>,
 
     // optional CONDSTORE response
-    #[cfg(feature = "condstore")]
     pub highest_modseq: Option<std::num::NonZeroU64>,
 }
 
@@ -67,7 +66,6 @@ impl SelectDataUnvalidated {
 pub struct SelectTask {
     mailbox: Mailbox<'static>,
     read_only: bool,
-    #[cfg(feature = "condstore")]
     condstore_enabled: bool,
     output: SelectDataUnvalidated,
 }
@@ -77,7 +75,6 @@ impl SelectTask {
         Self {
             mailbox,
             read_only: false,
-            #[cfg(feature = "condstore")]
             condstore_enabled: false,
             output: Default::default(),
         }
@@ -87,13 +84,11 @@ impl SelectTask {
         Self {
             mailbox,
             read_only: true,
-            #[cfg(feature = "condstore")]
             condstore_enabled: false,
             output: Default::default(),
         }
     }
 
-    #[cfg(feature = "condstore")]
     pub fn with_condstore(mut self, enabled: bool) -> Self {
         self.condstore_enabled = enabled;
         self
@@ -106,16 +101,12 @@ impl Task for SelectTask {
     fn command_body(&self) -> CommandBody<'static> {
         let mailbox = self.mailbox.clone();
 
-        #[cfg(feature = "condstore")]
         let parameters = if self.condstore_enabled {
             use imap_next::imap_types::command::SelectParameter;
             vec![SelectParameter::CondStore]
         } else {
-            Vec::new()
+            Default::default()
         };
-
-        #[cfg(not(feature = "condstore"))]
-        let parameters = Vec::new();
 
         if self.read_only {
             CommandBody::Examine {
@@ -170,7 +161,6 @@ impl Task for SelectTask {
                     self.output.uid_validity = Some(uid);
                     None
                 }
-                #[cfg(feature = "condstore")]
                 Some(Code::HighestModSeq(modseq)) => {
                     self.output.highest_modseq = Some(modseq);
                     None

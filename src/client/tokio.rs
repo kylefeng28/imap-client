@@ -353,7 +353,6 @@ impl Client {
     }
 
     /// Enables the CONDSTORE extension if supported by the server.
-    #[cfg(feature = "condstore")]
     pub async fn enable_condstore_if_supported(&mut self) -> Result<bool, ClientError> {
         if !self.state.ext_condstore_supported() || !self.state.ext_enable_supported() {
             return Ok(false);
@@ -401,9 +400,7 @@ impl Client {
         mailbox: impl TryInto<Mailbox<'_>, Error = ValidationError>,
     ) -> Result<SelectDataUnvalidated, ClientError> {
         let mbox = mailbox.try_into()?.into_static();
-        let task = SelectTask::new(mbox);
-        #[cfg(feature = "condstore")]
-        let task = task.with_condstore(self.state.condstore_enabled());
+        let task = SelectTask::new(mbox).with_condstore(self.state.condstore_enabled());
         Ok(self.resolve(task).await??)
     }
 
@@ -413,9 +410,7 @@ impl Client {
         mailbox: impl TryInto<Mailbox<'_>, Error = ValidationError>,
     ) -> Result<SelectDataUnvalidated, ClientError> {
         let mbox = mailbox.try_into()?.into_static();
-        let task = SelectTask::read_only(mbox);
-        #[cfg(feature = "condstore")]
-        let task = task.with_condstore(self.state.condstore_enabled());
+        let task = SelectTask::read_only(mbox).with_condstore(self.state.condstore_enabled());
         Ok(self.resolve(task).await??)
     }
 

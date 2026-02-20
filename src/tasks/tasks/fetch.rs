@@ -55,13 +55,11 @@ impl FetchTask {
         self
     }
 
-    #[cfg(feature = "condstore")]
     pub fn with_changed_since(mut self, modseq: std::num::NonZeroU64) -> Self {
         self.modifiers.push(imap_next::imap_types::command::FetchModifier::ChangedSince(modseq));
         self
     }
 
-    #[cfg(feature = "condstore")]
     pub fn with_vanished(mut self) -> Self {
         self.modifiers.push(imap_next::imap_types::command::FetchModifier::Vanished);
         self
