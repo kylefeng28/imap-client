@@ -73,6 +73,7 @@ use crate::{
             search::SearchTask,
             select::{SelectDataUnvalidated, SelectTask},
             sort::SortTask,
+            status::StatusTask,
             store::StoreTask,
             thread::ThreadTask,
             TaskError,
@@ -411,6 +412,17 @@ impl Client {
     ) -> Result<SelectDataUnvalidated, ClientError> {
         let mbox = mailbox.try_into()?.into_static();
         let task = SelectTask::read_only(mbox).with_condstore(self.state.condstore_enabled());
+        Ok(self.resolve(task).await??)
+    }
+
+    /// Gets the status of the given mailbox.
+    pub async fn status(
+        &mut self,
+        mailbox: impl TryInto<Mailbox<'_>, Error = ValidationError>,
+        item_names: Vec<imap_next::imap_types::status::StatusDataItemName>,
+    ) -> Result<Vec<imap_next::imap_types::status::StatusDataItem>, ClientError> {
+        let mbox = mailbox.try_into()?.into_static();
+        let task = StatusTask::new(mbox, item_names);
         Ok(self.resolve(task).await??)
     }
 

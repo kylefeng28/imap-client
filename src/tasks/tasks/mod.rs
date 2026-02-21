@@ -21,6 +21,7 @@ pub mod noop;
 pub mod search;
 pub mod select;
 pub mod sort;
+pub mod status;
 pub mod store;
 pub mod thread;
 
